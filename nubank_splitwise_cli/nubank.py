@@ -36,6 +36,13 @@ class NubankWrapper:
         else:
             self.refresh_token = self._nu.authenticate_with_cert(tax_id, password, certificate_path)
 
-    def get_card_transactions(self, from_: datetime.date) -> List[Transaction]:
+    def get_credit_transactions(self, from_: datetime.date) -> List[Transaction]:
         transactions = [Transaction(s["description"], s["amount"], s["time"]) for s in self._nu.get_card_statements()]
         return list(filter(lambda t: t.time.date() >= from_, transactions))
+
+    def get_debit_transactions(self, from_: datetime.date) -> List[Transaction]:
+        return [Transaction(
+            description=f"{s['detail']} ({s['__typename']})",
+            amount=int(s['amount'] * 100),
+            time=datetime.strptime(s["postDate"], "%Y-%m-%d"))
+            for s in self._nu.get_account_statements() if s["postDate"] >= from_.strftime("%Y-%m-%d")]

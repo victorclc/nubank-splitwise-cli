@@ -38,3 +38,7 @@ class Splitwise:
                                  json=expense.to_dict())
         if response.status_code != 200 or not response.json()["expenses"]:
             raise Exception(f"create_expense error: {response.text}")  # TODO custom exception
+
+    def get_groups(self):
+        response = requests.get(self.BASE_URL + "get_groups", headers=self.__default_headers())
+        return response.json()['groups']
