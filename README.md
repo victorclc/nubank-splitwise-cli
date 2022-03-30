@@ -32,7 +32,30 @@ A quick way to register credit and debit transactions from Nubank into a group i
 
 <p align="right">(<a href="#top">back to top</a>)</p>
 
+
+
 <!-- USAGE EXAMPLES -->
+
+## Usage
+
+Check for credit transactions to register
+
+```sh
+   python3 nsc.py split-credit --date-start 2022-03-01
+```
+
+Check for debit transactions to register
+
+```sh
+   python3 nsc.py split-debit --date-start 2022-03-01
+```
+
+Check for debit and credit transactions to register
+
+```sh
+   python3 nsc.py split-all --date-start 2022-03-01
+```
+
 
 ## Contributing
 
@@ -59,9 +82,3 @@ simply open an issue with the tag "enhancement". Don't forget to give the projec
 Distributed under the MIT License. See `LICENSE.txt` for more information.
 
 <p align="right">(<a href="#top">back to top</a>)</p>
-
-
-
-
-<!-- ACKNOWLEDGMENTS -->
-
