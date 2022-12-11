@@ -133,6 +133,8 @@ def split_transactions(config: Config, get_transactions_func: Callable[[], List[
         expense = Expense(cost=transaction.amount, description=transaction.description, date=transaction.time,
                           group_id=group_id)
         splitwise.create_expense(expense)
+
+    config.set_last_execution_date(datetime.now().date())
     click.echo("Done.")
 
 
@@ -152,8 +154,9 @@ def get_all_transactions(nubank: NubankWrapper, date_start: datetime):
 
 
 @cli_group.command
-@click.option("--date-start", prompt="Transactions from date (yyyy-mm-dd): ",
+@click.option("--date-start", prompt="Transactions from date (yyyy-mm-dd)",
               help="Transactions from date (yyyy-mm-dd)",
+              default=Config().get_last_execution_date(),
               type=click.DateTime(formats=["%Y-%m-%d"]))
 def split_credit(date_start: datetime):
     config = Config()
@@ -162,7 +165,8 @@ def split_credit(date_start: datetime):
 
 
 @cli_group.command
-@click.option("--date-start", prompt="Transactions from date (yyyy-mm-dd): ",
+@click.option("--date-start", prompt="Transactions from date (yyyy-mm-dd)",
+              default=Config().get_last_execution_date(),
               help="Transactions from date (yyyy-mm-dd)",
               type=click.DateTime(formats=["%Y-%m-%d"]))
 def split_debit(date_start: datetime):
@@ -172,8 +176,9 @@ def split_debit(date_start: datetime):
 
 
 @cli_group.command
-@click.option("--date-start", prompt="Transactions from date (yyyy-mm-dd): ",
+@click.option("--date-start", prompt="Transactions from date (yyyy-mm-dd)",
               help="Transactions from date (yyyy-mm-dd)",
+              default=Config().get_last_execution_date(),
               type=click.DateTime(formats=["%Y-%m-%d"]))
 def split_all(date_start: datetime):
     config = Config()
