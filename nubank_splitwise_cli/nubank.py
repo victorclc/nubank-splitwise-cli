@@ -13,7 +13,11 @@ class Transaction:
 
     def __post_init__(self):
         if isinstance(self.time, str):
-            self.time = datetime.strptime(self.time, "%Y-%m-%dT%H:%M:%SZ")
+            try:
+                self.time = datetime.strptime(self.time, "%Y-%m-%dT%H:%M:%S.%fZ")
+            except Exception:
+                self.time = datetime.strptime(self.time, "%Y-%m-%dT%H:%M:%SZ")
+                
 
     def pretty_print(self):
         return f"""
