@@ -4,6 +4,8 @@ from typing import Callable, List
 import click
 import sys
 
+from pynubank import NuRequestException
+
 from .config import Config
 from .nubank import NubankWrapper, Transaction
 from .splitwise import Splitwise, Expense
@@ -43,6 +45,11 @@ With the certificate in hands, enter the absolute path of the file bellow.
     config.set_nubank_cert_path(
         click.prompt("Nubank .p12 certificate absolute path", default=config.get_nubank_cert_path())
     )
+    nubank_config_credentials(config)
+    click.echo("Nubank configuration completed.\n")
+
+
+def nubank_config_credentials(config: Config) -> NubankWrapper:
     click.echo("Enter your credentials")
     tax_id = click.prompt("CPF")
     password = click.prompt("Password", hide_input=True)
@@ -50,7 +57,7 @@ With the certificate in hands, enter the absolute path of the file bellow.
     wrapper = NubankWrapper(config.get_nubank_cert_path(), tax_id=tax_id, password=password)
     config.set_nubank_refresh_token(wrapper.refresh_token)
 
-    click.echo("Nubank configuration completed.\n")
+    return wrapper
 
 
 def splitwise_config_wizard(config: Config):
@@ -93,7 +100,13 @@ def initialize_nubank_wrapper(config: Config) -> NubankWrapper:
     refresh_token = config.get_nubank_refresh_token()
     if refresh_token:
         click.echo("Obtaining Nubank session...")
-        return NubankWrapper(config.get_nubank_cert_path(), refresh_token=refresh_token)
+        try:
+            return NubankWrapper(config.get_nubank_cert_path(), refresh_token=refresh_token)
+        except NuRequestException as ex:
+            if ex.status_code == 403:
+                click.echo("Nubank session expired. Please re-enter your credentials.")
+                return nubank_config_credentials(config)
+
     raise_not_configured_exception()
 
 
