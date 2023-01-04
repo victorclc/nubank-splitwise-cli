@@ -17,7 +17,6 @@ class Transaction:
                 self.time = datetime.strptime(self.time, "%Y-%m-%dT%H:%M:%S.%fZ")
             except Exception:
                 self.time = datetime.strptime(self.time, "%Y-%m-%dT%H:%M:%SZ")
-                
 
     def pretty_print(self):
         return f"""

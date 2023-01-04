@@ -98,23 +98,23 @@ def configure(nubank_cert_path: str, splitwise_api_key: str, splitwise_default_g
 
 def initialize_nubank_wrapper(config: Config) -> NubankWrapper:
     refresh_token = config.get_nubank_refresh_token()
-    if refresh_token:
-        click.echo("Obtaining Nubank session...")
-        try:
-            return NubankWrapper(config.get_nubank_cert_path(), refresh_token=refresh_token)
-        except NuRequestException as ex:
-            if ex.status_code == 403:
-                click.echo("Nubank session expired. Please re-enter your credentials.")
-                return nubank_config_credentials(config)
+    if not refresh_token:
+        raise_not_configured_exception()
 
-    raise_not_configured_exception()
+    click.echo("Obtaining Nubank session...")
+    try:
+        return NubankWrapper(config.get_nubank_cert_path(), refresh_token=refresh_token)
+    except NuRequestException as ex:
+        if ex.status_code == 403:
+            click.echo("Nubank session expired. Please re-enter your credentials.")
+            return nubank_config_credentials(config)
 
 
 def initialize_splitwise(config: Config):
     api_key = config.get_splitwise_api_key()
-    if api_key:
-        return Splitwise(api_key)
-    raise_not_configured_exception()
+    if not api_key:
+        raise_not_configured_exception()
+    return Splitwise(api_key)
 
 
 @cli_group.command
@@ -128,7 +128,7 @@ def splitwise_list_groups():
 def split_transactions(config: Config, get_transactions_func: Callable[[], List[Transaction]]):
     transactions = get_transactions_func()
     if not transactions:
-        click.echo("No transactions found.")
+        click.echo("No transactions found.", err=True)
         return
 
     splitwise = initialize_splitwise(config)

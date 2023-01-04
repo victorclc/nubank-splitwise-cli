@@ -14,7 +14,7 @@ class Expense:
     currency_code: str = "BRL"
     split_equally: bool = True
     repeat_interval: str = "never"
-    category_id: str = 18  # GENERAL
+    category_id: int = 18  # GENERAL
 
     def to_dict(self):
         return {
