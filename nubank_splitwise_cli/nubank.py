@@ -49,3 +49,6 @@ class NubankWrapper:
             amount=int(s['amount'] * 100),
             time=datetime.strptime(s["postDate"], "%Y-%m-%d"))
             for s in self._nu.get_account_statements() if s["postDate"] >= from_.strftime("%Y-%m-%d")]
+
+    def get_transactions(self, from_: datetime.date):
+        return self.get_credit_transactions(from_) + self.get_debit_transactions(from_)

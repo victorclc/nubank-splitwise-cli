@@ -1,4 +1,5 @@
 from datetime import datetime
+from decimal import Decimal
 from typing import Callable, List
 
 import click
@@ -8,16 +9,71 @@ from pynubank import NuRequestException
 
 from .config import Config
 from .nubank import NubankWrapper, Transaction
-from .splitwise import Splitwise, Expense
+from .splitwise import Splitwise, Expense, Member, UserShare
 
-
-@click.group()
-def cli_group():
-    pass
+pass_config = click.make_pass_decorator(Config)
 
 
 class NotConfiguredException(Exception):
     ...
+
+
+@click.group()
+@click.pass_context
+def cli(ctx: click.Context):
+    ctx.obj = Config()
+
+
+@cli.command
+@click.option("--date-start", prompt="Transactions from date (yyyy-mm-dd)",
+              help="Transactions from date (yyyy-mm-dd)",
+              default=Config().get_last_execution_date(),
+              type=click.DateTime(formats=["%Y-%m-%d"]))
+@pass_config
+def split_credit(config: Config, date_start: datetime):
+    nubank = initialize_nubank_wrapper(config)
+    split_transactions(config, nubank.get_credit_transactions(date_start.date()))
+
+
+@cli.command
+@click.option("--date-start", prompt="Transactions from date (yyyy-mm-dd)",
+              default=Config().get_last_execution_date(),
+              help="Transactions from date (yyyy-mm-dd)",
+              type=click.DateTime(formats=["%Y-%m-%d"]))
+@pass_config
+def split_debit(config: Config, date_start: datetime):
+    nubank = initialize_nubank_wrapper(config)
+    split_transactions(config, nubank.get_debit_transactions(date_start.date()))
+
+
+@cli.command
+@click.option("--date-start", prompt="Transactions from date (yyyy-mm-dd)",
+              help="Transactions from date (yyyy-mm-dd)",
+              default=Config().get_last_execution_date(),
+              type=click.DateTime(formats=["%Y-%m-%d"]))
+@pass_config
+def split_all(config: Config, date_start: datetime):
+    nubank = initialize_nubank_wrapper(config)
+    split_transactions(config, nubank.get_transactions(date_start.date()))
+
+
+@cli.command
+@click.option("--nubank-cert-path",
+              help="Absolute path of the generated nubank certificate. For how to generate a certificate please check: https://github.com/andreroggeri/pynubank/blob/master/examples/login-certificate.md")
+@click.option("--splitwise-api-key", help="You can generate one here: https://secure.splitwise.com/apps")
+@click.option("--splitwise-default-group-id", help="Default group id to register expenses.", type=click.INT)
+def configure(nubank_cert_path: str, splitwise_api_key: str, splitwise_default_group_id: int):
+    config = Config()
+    if nubank_cert_path:
+        config.set_nubank_cert_path(nubank_cert_path)
+    if splitwise_api_key:
+        config.set_splitwise_api_key(splitwise_api_key)
+    if splitwise_default_group_id:
+        config.set_splitwise_default_group_id(splitwise_default_group_id)
+
+    if not nubank_cert_path and not splitwise_api_key and not splitwise_default_group_id:
+        nubank_config_wizard(config)
+        splitwise_config_wizard(config)
 
 
 def raise_not_configured_exception():
@@ -77,25 +133,6 @@ https://secure.splitwise.com/apps
     click.echo("Splitwise configuration completed.\n")
 
 
-@cli_group.command
-@click.option("--nubank-cert-path",
-              help="Absolute path of the generated nubank certificate. For how to generate a certificate please check: https://github.com/andreroggeri/pynubank/blob/master/examples/login-certificate.md")
-@click.option("--splitwise-api-key", help="You can generate one here: https://secure.splitwise.com/apps")
-@click.option("--splitwise-default-group-id", help="Default group id to register expenses.", type=click.INT)
-def configure(nubank_cert_path: str, splitwise_api_key: str, splitwise_default_group_id: int):
-    config = Config()
-    if nubank_cert_path:
-        config.set_nubank_cert_path(nubank_cert_path)
-    if splitwise_api_key:
-        config.set_splitwise_api_key(splitwise_api_key)
-    if splitwise_default_group_id:
-        config.set_splitwise_default_group_id(splitwise_default_group_id)
-
-    if not nubank_cert_path and not splitwise_api_key and not splitwise_default_group_id:
-        nubank_config_wizard(config)
-        splitwise_config_wizard(config)
-
-
 def initialize_nubank_wrapper(config: Config) -> NubankWrapper:
     refresh_token = config.get_nubank_refresh_token()
     if not refresh_token:
@@ -117,7 +154,7 @@ def initialize_splitwise(config: Config):
     return Splitwise(api_key)
 
 
-@cli_group.command
+@cli.command
 def splitwise_list_groups():
     config = Config()
     splitwise = Splitwise(config.get_splitwise_api_key())
@@ -125,21 +162,72 @@ def splitwise_list_groups():
         click.echo(f"id: {group['id']}\tname: {group['name']}")
 
 
-def split_transactions(config: Config, get_transactions_func: Callable[[], List[Transaction]]):
-    transactions = get_transactions_func()
+def collect_users_share(currend_user, members: List[Member], cost: int):
+    click.echo("Some message here ")
+    shares = []
+    for i, member in enumerate(members, start=1):
+        click.echo(f"id: {i}\tname: {member.first_name} {member.last_name}")
+        percentage = click.prompt("Percentage", type=click.INT)
+        owed_share = f"{(cost * (percentage / 100))/100}"
+        paid_share = "0"
+        if member.id == currend_user.id:
+            paid_share = f"{cost/100}"
+
+        shares.append(
+            UserShare(
+                member.id,
+                owed_share=owed_share,
+                paid_share=paid_share
+            )
+        )
+    return shares
+
+
+def split_transactions(config: Config, transactions: List[Transaction]):
     if not transactions:
-        click.echo("No transactions found.", err=True)
+        click.echo("No transactions found.")
         return
 
     splitwise = initialize_splitwise(config)
     group_id = choose_splitwise_group(splitwise, config, "Select group id to add expenses")
+    group_details = splitwise.group_details(group_id)
+    current_user = splitwise.current_user()
 
     to_split = []
     for i, transaction in enumerate(transactions, start=1):
         click.echo(f"{i} of {len(transactions)}")
         click.echo(transaction.pretty_print())
-        if click.confirm("Split transaction?"):
-            to_split.append(transaction)
+
+        click.echo("1 - Skip")
+        click.echo("2 - Split equally")
+        click.echo("3 - Split by shares")
+
+        option = click.prompt("Choose option", default="1",
+                              type=click.Choice(["1", "2", "3"]))
+
+        if option == "1":
+            continue
+        if option == "2":
+            expense = Expense(
+                cost=transaction.amount,
+                description=transaction.description,
+                date=transaction.time,
+                group_id=group_id
+            )
+            to_split.append(expense)
+        if option == "3":
+            users_share = collect_users_share(current_user, group_details.members, transaction.amount)
+            print(users_share)
+            expense = Expense(
+                cost=transaction.amount,
+                description=transaction.description,
+                date=transaction.time,
+                group_id=group_id,
+                split_equally=False,
+                users_share=users_share
+            )
+            splitwise.create_expense(expense)
+            to_split.append(expense)
 
     click.echo(f"Adding {len(to_split)} transactions to splitwise group {group_id}.")
     for transaction in to_split:
@@ -164,36 +252,3 @@ def get_debit_transactions(nubank: NubankWrapper, date_start: datetime):
 def get_all_transactions(nubank: NubankWrapper, date_start: datetime):
     click.echo("Fetching Nubank debit and credit transactions...")
     return nubank.get_debit_transactions(date_start.date()) + nubank.get_credit_transactions(date_start.date())
-
-
-@cli_group.command
-@click.option("--date-start", prompt="Transactions from date (yyyy-mm-dd)",
-              help="Transactions from date (yyyy-mm-dd)",
-              default=Config().get_last_execution_date(),
-              type=click.DateTime(formats=["%Y-%m-%d"]))
-def split_credit(date_start: datetime):
-    config = Config()
-    nubank = initialize_nubank_wrapper(config)
-    split_transactions(config, lambda: get_credit_transactions(nubank, date_start))
-
-
-@cli_group.command
-@click.option("--date-start", prompt="Transactions from date (yyyy-mm-dd)",
-              default=Config().get_last_execution_date(),
-              help="Transactions from date (yyyy-mm-dd)",
-              type=click.DateTime(formats=["%Y-%m-%d"]))
-def split_debit(date_start: datetime):
-    config = Config()
-    nubank = initialize_nubank_wrapper(config)
-    split_transactions(config, lambda: get_debit_transactions(nubank, date_start))
-
-
-@cli_group.command
-@click.option("--date-start", prompt="Transactions from date (yyyy-mm-dd)",
-              help="Transactions from date (yyyy-mm-dd)",
-              default=Config().get_last_execution_date(),
-              type=click.DateTime(formats=["%Y-%m-%d"]))
-def split_all(date_start: datetime):
-    config = Config()
-    nubank = initialize_nubank_wrapper(config)
-    split_transactions(config, lambda: get_all_transactions(nubank, date_start))
