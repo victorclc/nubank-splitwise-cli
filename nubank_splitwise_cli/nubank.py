@@ -13,7 +13,10 @@ class Transaction:
 
     def __post_init__(self):
         if isinstance(self.time, str):
-            self.time = datetime.strptime(self.time, "%Y-%m-%dT%H:%M:%SZ")
+            try:
+                self.time = datetime.strptime(self.time, "%Y-%m-%dT%H:%M:%S.%fZ")
+            except Exception:
+                self.time = datetime.strptime(self.time, "%Y-%m-%dT%H:%M:%SZ")
 
     def pretty_print(self):
         return f"""
@@ -46,3 +49,6 @@ class NubankWrapper:
             amount=int(s['amount'] * 100),
             time=datetime.strptime(s["postDate"], "%Y-%m-%d"))
             for s in self._nu.get_account_statements() if s["postDate"] >= from_.strftime("%Y-%m-%d")]
+
+    def get_transactions(self, from_: datetime.date):
+        return self.get_credit_transactions(from_) + self.get_debit_transactions(from_)

@@ -1,8 +1,8 @@
-from nubank_splitwise_cli.cli import cli_group
+from nubank_splitwise_cli.cli import cli
 
 
 def main():
-    cli_group()
+    cli()
 
 
 if __name__ == '__main__':
