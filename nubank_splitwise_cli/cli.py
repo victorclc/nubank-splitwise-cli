@@ -1,15 +1,13 @@
+import sys
 from datetime import datetime
-from decimal import Decimal
-from typing import Callable, List
+from typing import List
 
 import click
-import sys
-
 from pynubank import NuRequestException
 
 from .config import Config
 from .nubank import NubankWrapper, Transaction
-from .splitwise import Splitwise, Expense, Member, UserShare
+from .splitwise import Splitwise, Expense, Member, UserShare, GroupDetails, User
 
 pass_config = click.make_pass_decorator(Config)
 
@@ -162,16 +160,16 @@ def splitwise_list_groups():
         click.echo(f"id: {group['id']}\tname: {group['name']}")
 
 
-def collect_users_share(currend_user, members: List[Member], cost: int):
-    click.echo("Some message here ")
+def collect_users_share(currend_user, members: List[Member], cost: int, percentage_cache: dict):
     shares = []
     for i, member in enumerate(members, start=1):
         click.echo(f"id: {i}\tname: {member.first_name} {member.last_name}")
-        percentage = click.prompt("Percentage", type=click.INT)
-        owed_share = f"{(cost * (percentage / 100))/100}"
+        percentage = click.prompt("Percentage", type=click.INT, default=percentage_cache.get(member.id))
+        percentage_cache[member.id] = percentage
+        owed_share = f"{(cost * percentage) / 10000}"
         paid_share = "0"
         if member.id == currend_user.id:
-            paid_share = f"{cost/100}"
+            paid_share = f"{cost / 100}"
 
         shares.append(
             UserShare(
@@ -181,6 +179,38 @@ def collect_users_share(currend_user, members: List[Member], cost: int):
             )
         )
     return shares
+
+
+def collect_split_option():
+    click.echo("1 - Skip")
+    click.echo("2 - Split equally")
+    click.echo("3 - Split by shares")
+
+    return click.prompt("Choose option", default="1",
+                        type=click.Choice(["1", "2", "3"]))
+
+
+def split_transaction_equally(transaction: Transaction, group_id: int) -> Expense:
+    click.echo("Spliting transaction equally.")
+    return Expense(
+        cost=transaction.amount,
+        description=transaction.description,
+        date=transaction.time,
+        group_id=group_id
+    )
+
+
+def split_transaction_by_shares(transaction: Transaction, group_details: GroupDetails, current_user: User, percentage_shares_cache: dict) -> Expense:
+    users_share = collect_users_share(current_user, group_details.members, transaction.amount, percentage_shares_cache)
+    click.echo("Spliting transaction by shares.")
+    return Expense(
+        cost=transaction.amount,
+        description=transaction.description,
+        date=transaction.time,
+        group_id=int(group_details.id),
+        split_equally=False,
+        users_share=users_share
+    )
 
 
 def split_transactions(config: Config, transactions: List[Transaction]):
@@ -194,61 +224,27 @@ def split_transactions(config: Config, transactions: List[Transaction]):
     current_user = splitwise.current_user()
 
     to_split = []
+    percentage_shares_cache = {}
     for i, transaction in enumerate(transactions, start=1):
         click.echo(f"{i} of {len(transactions)}")
         click.echo(transaction.pretty_print())
-
-        click.echo("1 - Skip")
-        click.echo("2 - Split equally")
-        click.echo("3 - Split by shares")
-
-        option = click.prompt("Choose option", default="1",
-                              type=click.Choice(["1", "2", "3"]))
+        option = collect_split_option()
 
         if option == "1":
+            click.echo("Skiping transaction.")
             continue
+
         if option == "2":
-            expense = Expense(
-                cost=transaction.amount,
-                description=transaction.description,
-                date=transaction.time,
-                group_id=group_id
-            )
+            expense = split_transaction_equally(transaction, group_id)
             to_split.append(expense)
+
         if option == "3":
-            users_share = collect_users_share(current_user, group_details.members, transaction.amount)
-            print(users_share)
-            expense = Expense(
-                cost=transaction.amount,
-                description=transaction.description,
-                date=transaction.time,
-                group_id=group_id,
-                split_equally=False,
-                users_share=users_share
-            )
-            splitwise.create_expense(expense)
+            expense = split_transaction_by_shares(transaction, group_details, current_user, percentage_shares_cache)
             to_split.append(expense)
 
     click.echo(f"Adding {len(to_split)} transactions to splitwise group {group_id}.")
-    for transaction in to_split:
-        expense = Expense(cost=transaction.amount, description=transaction.description, date=transaction.time,
-                          group_id=group_id)
+    for expense in to_split:
         splitwise.create_expense(expense)
 
     config.set_last_execution_date(datetime.now().date())
     click.echo("Done.")
-
-
-def get_credit_transactions(nubank: NubankWrapper, date_start: datetime):
-    click.echo("Fetching Nubank credit transactions...")
-    return nubank.get_credit_transactions(date_start.date())
-
-
-def get_debit_transactions(nubank: NubankWrapper, date_start: datetime):
-    click.echo("Fetching Nubank debit transactions...")
-    return nubank.get_debit_transactions(date_start.date())
-
-
-def get_all_transactions(nubank: NubankWrapper, date_start: datetime):
-    click.echo("Fetching Nubank debit and credit transactions...")
-    return nubank.get_debit_transactions(date_start.date()) + nubank.get_credit_transactions(date_start.date())
